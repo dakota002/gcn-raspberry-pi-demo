@@ -5,8 +5,8 @@
   tasks:
     - name: Get Kafka server ID
       ansible.builtin.set_fact:
-        kafka_server_id: "{{ ansible_play_hosts_all.index(inventory_hostname) + 1 }}"
-        bootstrap_servers: "{% for host in ansible_play_hosts_all %}{{ host }}:9092{% if not loop.last %},{% endif %}{% endfor %}"
+        kafka_server_id: '{{ ansible_play_hosts_all.index(inventory_hostname) + 1 }}'
+        bootstrap_servers: '{% for host in ansible_play_hosts_all %}{{ host }}:9092{% if not loop.last %},{% endif %}{% endfor %}'
 
     - name: Add Confluent Debian Key
       ansible.builtin.apt_key:
@@ -39,6 +39,8 @@
       loop:
         - zookeeper
         - kafka
+      notify:
+        - Restart Zookeeper
 
     - name: Work around https://github.com/confluentinc/schema-registry/pull/917
       ansible.builtin.copy:
@@ -49,6 +51,8 @@
           [Install]
           WantedBy=multi-user.target
         dest: /usr/local/lib/systemd/system/confluent-zookeeper.target
+      notify:
+        - Restart Zookeeper
 
     - name: Configure Zookeeper
       ansible.builtin.copy:
@@ -63,6 +67,8 @@
           server.{{ loop.index }}={{ host }}:2888:3888
           {% endfor %}
         dest: /etc/kafka/zookeeper.properties
+      notify:
+        - Restart Zookeeper
 
     - name: Configure Kafka
       ansible.builtin.copy:
@@ -82,11 +88,15 @@
 
           group.initial.rebalance.delay.ms=0
         dest: /etc/kafka/server.properties
+      notify:
+        - Restart Zookeeper
 
     - name: Set Zookeeper ID
       ansible.builtin.copy:
-        content: "{{ kafka_server_id }}"
+        content: '{{ kafka_server_id }}'
         dest: /var/lib/zookeeper/myid
+      notify:
+        - Restart Zookeeper
 
     - name: Start confluent-zookeeper.service
       ansible.builtin.systemd_service:
@@ -112,3 +122,10 @@
         - red
         - green
         - blue
+
+  handlers:
+    - name: Restart Zookeeper
+      ansible.builtin.systemd_service:
+        name: confluent-zookeeper.service
+        enabled: true
+        state: restarted
